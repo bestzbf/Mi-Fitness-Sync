@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
 import stat
+import tempfile
 from dataclasses import asdict
 from pathlib import Path
 
@@ -21,11 +23,19 @@ def resolve_state_path(state_path: str | None = None) -> Path:
 def save_state(state: AuthState, state_path: str | None = None) -> Path:
     path = resolve_state_path(state_path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(asdict(state), indent=2, sort_keys=True), encoding="utf-8")
+    fd, temporary = tempfile.mkstemp(prefix=".auth-", suffix=".tmp", dir=path.parent)
     try:
-        path.chmod(stat.S_IRUSR | stat.S_IWUSR)
-    except OSError:
-        pass  # Best-effort; Windows ACLs don't support POSIX modes
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            json.dump(asdict(state), stream, indent=2, sort_keys=True)
+            stream.flush()
+            os.fsync(stream.fileno())
+        try:
+            Path(temporary).chmod(stat.S_IRUSR | stat.S_IWUSR)
+        except OSError:
+            pass  # Best-effort; Windows ACLs don't support POSIX modes
+        os.replace(temporary, path)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
     return path
 
 

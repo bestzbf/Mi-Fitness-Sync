@@ -287,9 +287,10 @@ def render_fit(detail: ActivityDetail) -> bytes:
     lap.total_calories = detail.total_calories or 0
     lap.sport = fit_sport
     lap.sub_sport = fit_sub_sport
-    if export_points and export_points[0].latitude is not None and export_points[0].longitude is not None:
-        lap.start_position_lat = export_points[0].latitude
-        lap.start_position_long = export_points[0].longitude
+    first_position = next((point for point in export_points if point.latitude is not None and point.longitude is not None), None)
+    if first_position is not None:
+        lap.start_position_lat = first_position.latitude
+        lap.start_position_long = first_position.longitude
     if detail.track_points:
         lap.end_position_lat = detail.track_points[-1].latitude
         lap.end_position_long = detail.track_points[-1].longitude
@@ -316,9 +317,9 @@ def render_fit(detail: ActivityDetail) -> bytes:
     session.sport = fit_sport
     session.sub_sport = fit_sub_sport
     session.num_laps = 1
-    if export_points and export_points[0].latitude is not None and export_points[0].longitude is not None:
-        session.start_position_lat = export_points[0].latitude
-        session.start_position_long = export_points[0].longitude
+    if first_position is not None:
+        session.start_position_lat = first_position.latitude
+        session.start_position_long = first_position.longitude
     if detail.track_points:
         session.end_position_lat = detail.track_points[-1].latitude
         session.end_position_long = detail.track_points[-1].longitude
@@ -368,7 +369,29 @@ def render_fit(detail: ActivityDetail) -> bytes:
 
 def _export_points(detail: ActivityDetail) -> list[TrackPoint]:
     if detail.track_points:
-        return detail.track_points
+        heart_samples = {sample.timestamp: sample for sample in detail.samples if sample.heart_rate is not None and 0 < sample.heart_rate < 255}
+        points = [
+            _dc_replace(point, heart_rate=heart_samples[point.timestamp].heart_rate)
+            if point.heart_rate is None and point.timestamp in heart_samples else point
+            for point in detail.track_points
+        ]
+        timestamps = {point.timestamp for point in points}
+        # GPS can start later or have gaps. Preserve real HR samples at those times
+        # as records without a position, rather than throwing away sensor data.
+        for sample in detail.samples:
+            if (
+                sample.timestamp not in timestamps
+                and detail.start_time <= sample.timestamp <= detail.end_time
+                and sample.heart_rate is not None and 0 < sample.heart_rate < 255
+            ):
+                points.append(TrackPoint(
+                    timestamp=sample.timestamp, latitude=None, longitude=None,
+                    altitude_meters=sample.altitude_meters, speed_mps=sample.speed_mps,
+                    distance_meters=sample.distance_meters, heart_rate=sample.heart_rate,
+                    cadence=sample.cadence, raw_point=sample.raw_sample,
+                ))
+                timestamps.add(sample.timestamp)
+        return sorted(points, key=lambda point: point.timestamp)
     return [
         TrackPoint(
             timestamp=sample.timestamp,

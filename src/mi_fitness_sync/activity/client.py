@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import requests
 
@@ -48,6 +48,7 @@ class MiFitnessActivitiesClient:
         country_code: str | None = None,
         cache_dir: Path | str = DEFAULT_CACHE_DIR,
         no_cache: bool = False,
+        auth_refresher: Callable[[AuthState], AuthState] | None = None,
     ):
         self._auth_state = auth_state
         self._timeout = timeout
@@ -57,6 +58,7 @@ class MiFitnessActivitiesClient:
             auth_state,
             timeout=timeout,
             country_code=country_code,
+            auth_refresher=auth_refresher,
         )
         self._cookie_values = self._transport.cookie_values
         self._cache: FdsCache | None = None if no_cache else FdsCache(cache_dir)

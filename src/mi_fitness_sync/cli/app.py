@@ -152,6 +152,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     upload_parser.add_argument("--verbose", action="store_true", help="Enable debug logging")
 
+    from mi_fitness_sync.cli.sync_runs import add_parser as add_sync_runs_parser
+
+    add_sync_runs_parser(subparsers)
+    from mi_fitness_sync.cli.export_runs import add_parser as add_export_runs_parser
+
+    add_export_runs_parser(subparsers)
     return parser
 
 
@@ -183,6 +189,14 @@ def main(argv: list[str] | None = None) -> int:
             return handle_strava_logout(args)
         if args.command == "upload-to-strava":
             return handle_upload_to_strava(args)
+        if args.command == "sync-runs":
+            from mi_fitness_sync.cli.sync_runs import handle_sync_runs
+
+            return handle_sync_runs(args)
+        if args.command == "export-runs":
+            from mi_fitness_sync.cli.export_runs import handle_export_runs
+
+            return handle_export_runs(args)
     except MiFitnessError as exc:
         print(format_error(exc), file=sys.stderr)
         return 1
@@ -191,7 +205,7 @@ def main(argv: list[str] | None = None) -> int:
     return 2
 
 
-def handle_login(args: argparse.Namespace) -> int:
+def handle_login(args: argparse.Namespace, *, device_id: str | None = None) -> int:
     email = args.email
     password = args.password
     if not email:
@@ -205,7 +219,7 @@ def handle_login(args: argparse.Namespace) -> int:
         )
 
     existing_state = load_state(args.state_path)
-    device_id = existing_state.device_id if existing_state else MiFitnessAuthClient.generate_device_id()
+    device_id = existing_state.device_id if existing_state else device_id or MiFitnessAuthClient.generate_device_id()
 
     client = MiFitnessAuthClient(service_id=DEFAULT_SERVICE_ID)
     try:

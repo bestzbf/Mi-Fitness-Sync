@@ -216,10 +216,10 @@ def parse_four_dimen_valid(
     nibble_index = 0
     for data_type in data_types:
         if data_type.max_support_version is not None and version > data_type.max_support_version:
-            valid_map[data_type.type_id] = FourDimenValid(False, False, False, False)
+            valid_map.setdefault(data_type.type_id, FourDimenValid(False, False, False, False))
             continue
         if data_type.support_version > version:
-            valid_map[data_type.type_id] = FourDimenValid(False, False, False, False)
+            valid_map.setdefault(data_type.type_id, FourDimenValid(False, False, False, False))
             continue
         byte_idx = nibble_index // 2
         if byte_idx >= len(data_valid):

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any
+from typing import Any, Callable
 
 import requests
 
@@ -50,10 +50,12 @@ class ActivityTransport:
         *,
         timeout: int,
         country_code: str | None,
+        auth_refresher: Callable[[AuthState], AuthState] | None = None,
     ):
         self._session = session
         self._auth_state = auth_state
         self._timeout = timeout
+        self._auth_refresher = auth_refresher
         self._region_override = region_for_country_code(country_code)
         self._resolved_region: str | None = None
         self._cookie_values = collect_cookie_values(auth_state)
@@ -129,37 +131,52 @@ class ActivityTransport:
         request_label: str,
         signature_path: str | None = None,
     ) -> dict[str, Any]:
-        nonce = generate_nonce(0)
-        params = encrypt_query_params(
-            method="GET",
-            path=path,
-            params={"data": json.dumps(request_payload, separators=(",", ":"))},
-            nonce=nonce,
-            ssecurity=self._auth_state.ssecurity,
-            signature_path=signature_path,
-        )
-
-        response = self._session.get(
-            endpoint,
-            params=params,
-            headers=self.build_request_headers(),
-            timeout=self._timeout,
-        )
+        for attempt in range(2):
+            # Renewal changes ssecurity as well as the token: recreate the nonce,
+            # signature and encrypted payload before retrying this read request.
+            nonce = generate_nonce(0)
+            params = encrypt_query_params(
+                method="GET",
+                path=path,
+                params={"data": json.dumps(request_payload, separators=(",", ":"))},
+                nonce=nonce,
+                ssecurity=self._auth_state.ssecurity,
+                signature_path=signature_path,
+            )
+            response = self._session.get(
+                endpoint,
+                params=params,
+                headers=self.build_request_headers(),
+                timeout=self._timeout,
+            )
+            if response.status_code != 401 or attempt or self._auth_refresher is None:
+                break
+            previous = self._auth_state
+            renewed = self._auth_refresher(previous)
+            if (renewed.user_id, renewed.service_id) != (previous.user_id, previous.service_id):
+                raise XiaomiApiError("Renewed Xiaomi account does not match the request.")
+            self._auth_state = renewed
+            self._cookie_values = collect_cookie_values(renewed)
 
         if response.status_code == 401:
-            raise XiaomiApiError(f"{request_label} was rejected with 401 auth err.")
+            raise XiaomiApiError(f"{request_label} was rejected with 401 auth err.", http_status=401)
         if not response.ok:
             raise XiaomiApiError(
                 f"{request_label} failed with HTTP {response.status_code}.",
                 payload={"response_text": response.text[:500]},
+                http_status=response.status_code,
             )
 
-        payload = decrypt_response_payload(response.text, nonce, self._auth_state.ssecurity)
+        try:
+            payload = decrypt_response_payload(response.text, nonce, self._auth_state.ssecurity)
+        except (ValueError, UnicodeError) as exc:
+            raise XiaomiApiError(f"{request_label} response could not be decoded.", http_status=response.status_code) from exc
         if payload.get("code") != 0:
             raise XiaomiApiError(
                 payload.get("message") or f"{request_label} API returned an error.",
                 code=payload.get("code"),
                 payload=payload,
+                http_status=response.status_code,
             )
         return payload
 

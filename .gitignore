@@ -208,3 +208,8 @@ __marimo__/
 
 # Decompiled files
 /mifitness_android/
+
+# Local settings, development files, caches and private workout exports
+/.local/
+/待上传跑步/
+.DS_Store

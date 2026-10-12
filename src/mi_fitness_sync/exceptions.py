@@ -5,10 +5,18 @@ class MiFitnessError(Exception):
 class XiaomiApiError(MiFitnessError):
     """Server-side or protocol error."""
 
-    def __init__(self, message: str, *, code: int | None = None, payload: dict | None = None):
+    def __init__(
+        self, message: str, *, code: int | None = None, payload: dict | None = None,
+        http_status: int | None = None,
+    ):
         super().__init__(message)
         self.code = code
         self.payload = payload or {}
+        self.http_status = http_status
+
+
+class XiaomiLoginRequiredError(XiaomiApiError):
+    """Xiaomi rejected the saved account credential or requires human verification."""
 
 
 class CaptchaRequiredError(MiFitnessError):

@@ -192,6 +192,8 @@ def parse_four_dimen_records(
         for data_type in data_types:
             if data_type.support_version > version:
                 continue
+            if data_type.max_support_version is not None and version > data_type.max_support_version:
+                continue
             valid = valid_map.get(data_type.type_id)
             if valid is None or not valid.exist:
                 continue
@@ -297,8 +299,32 @@ _ORDINARY_BALL_CONFIG = SportRecordConfig(four_dimen_types=[FourDimenType(TYPE_H
 _BASKETBALL_CONFIG = SportRecordConfig(four_dimen_types=[FourDimenType(TYPE_HR, 1, 1), FourDimenType(TYPE_CALORIES, 1, 1), FourDimenType(TYPE_SHOOT_COUNT, 1, 1, high_start_bit=4, high_bit_count=4), FourDimenType(TYPE_DISTANCE, 1, 1)])
 _GOLF_CONFIG = SportRecordConfig(one_dimen_types=[OneDimenType(TYPE_END_TIME, 4, 1), OneDimenType(TYPE_CALORIES, 2, 1), OneDimenType(TYPE_TOTAL_CAL, 2, 1), OneDimenType(31, 2, 1), OneDimenType(32, 2, 1), OneDimenType(33, 2, 1), OneDimenType(34, 2, 1)])
 _SKI_CONFIG = SportRecordConfig(it_summary_types=[OneDimenType(59, 4, 3), OneDimenType(60, 4, 3), OneDimenType(61, 2, 3), OneDimenType(62, 2, 3), OneDimenType(63, 1, 3)], four_dimen_types=[FourDimenType(TYPE_CALORIES, 1, 1), FourDimenType(TYPE_HR, 1, 1), FourDimenType(TYPE_HEIGHT_VALUE, 4, 4), FourDimenType(TYPE_DISTANCE_DOUBLE, 2, 4), FourDimenType(TYPE_HEIGHT_CHANGE_SIGN, 1, 1, high_start_bit=7, high_bit_count=1, max_support_version=3), FourDimenType(TYPE_DISTANCE, 1, 1, max_support_version=3), FourDimenType(TYPE_SPEED, 2, 2)], pause_init_types=[OneDimenType(-2, 1, 1), OneDimenType(0, 4, 1)])
-_OUTDOOR_STEP_CONFIG = SportRecordConfig(it_summary_types=[OneDimenType(TYPE_IT_STATE, 1, 1), OneDimenType(43, 4, 3), OneDimenType(TYPE_IT_TOTAL_DURATION, 4, 7), OneDimenType(54, 4, 6), OneDimenType(55, 2, 6)], four_dimen_types=[FourDimenType(TYPE_CALORIES, 1, 1, high_start_bit=4, high_bit_count=4), FourDimenType(TYPE_HR, 1, 1), FourDimenType(TYPE_HEIGHT_VALUE, 4, 9), FourDimenType(TYPE_INTEGER_KM, 2, 9, high_start_bit=15, high_bit_count=1), FourDimenType(TYPE_INTEGER_KM, 1, 1, high_start_bit=7, high_bit_count=1), FourDimenType(TYPE_DISTANCE, 1, 1), FourDimenType(TYPE_STRIDE, 1, 2), FourDimenType(TYPE_LANDING_IMPACT, 4, 4, high_start_bit=26, high_bit_count=6), FourDimenType(TYPE_TOUCHDOWN_AIR_RATIO, 1, 5), FourDimenType(TYPE_CADENCE, 1, 5), FourDimenType(TYPE_PACE, 2, 5), FourDimenType(56, 2, 6), FourDimenType(TYPE_RUNNING_POWER, 2, 6), FourDimenType(79, 2, 8), FourDimenType(80, 2, 8)], pause_init_types=[OneDimenType(0, 4, 1)])
-_OUTDOOR_NO_STEP_CONFIG = SportRecordConfig(it_summary_types=[OneDimenType(TYPE_IT_STATE, 1, 1), OneDimenType(43, 4, 2), OneDimenType(TYPE_IT_TOTAL_DURATION, 4, 5), OneDimenType(58, 2, 4)], four_dimen_types=[FourDimenType(TYPE_CALORIES, 1, 1, high_start_bit=4, high_bit_count=4), FourDimenType(TYPE_HR, 1, 1), FourDimenType(TYPE_HEIGHT_VALUE, 4, 6), FourDimenType(TYPE_INTEGER_KM, 2, 6, high_start_bit=15, high_bit_count=1), FourDimenType(TYPE_INTEGER_KM, 1, 1, high_start_bit=7, high_bit_count=1), FourDimenType(TYPE_DISTANCE, 1, 1), FourDimenType(TYPE_SPEED, 2, 3), FourDimenType(TYPE_CYCLE_CADENCE, 1, 3)], pause_init_types=[OneDimenType(0, 4, 1)])
+_OUTDOOR_STEP_CONFIG = SportRecordConfig(
+    it_summary_types=[OneDimenType(TYPE_IT_STATE, 1, 1), OneDimenType(43, 4, 3), OneDimenType(TYPE_IT_TOTAL_DURATION, 4, 7), OneDimenType(54, 4, 6), OneDimenType(55, 2, 6)],
+    four_dimen_types=[
+        FourDimenType(TYPE_CALORIES, 1, 1, high_start_bit=4, high_bit_count=4),
+        FourDimenType(TYPE_HR, 1, 1), FourDimenType(TYPE_HEIGHT_VALUE, 4, 9),
+        FourDimenType(TYPE_INTEGER_KM, 2, 9, high_start_bit=15, high_bit_count=1),
+        FourDimenType(TYPE_INTEGER_KM, 1, 1, high_start_bit=7, high_bit_count=1, max_support_version=8),
+        FourDimenType(TYPE_DISTANCE, 1, 1, max_support_version=8), FourDimenType(TYPE_STRIDE, 1, 2),
+        FourDimenType(TYPE_LANDING_IMPACT, 4, 4, high_start_bit=26, high_bit_count=6),
+        FourDimenType(TYPE_TOUCHDOWN_AIR_RATIO, 1, 5), FourDimenType(TYPE_CADENCE, 1, 5),
+        FourDimenType(TYPE_PACE, 2, 5), FourDimenType(56, 2, 6),
+        FourDimenType(TYPE_RUNNING_POWER, 2, 6), FourDimenType(79, 2, 8), FourDimenType(80, 2, 8),
+    ],
+    pause_init_types=[OneDimenType(0, 4, 1)],
+)
+_OUTDOOR_NO_STEP_CONFIG = SportRecordConfig(
+    it_summary_types=[OneDimenType(TYPE_IT_STATE, 1, 1), OneDimenType(43, 4, 2), OneDimenType(TYPE_IT_TOTAL_DURATION, 4, 5), OneDimenType(58, 2, 4)],
+    four_dimen_types=[
+        FourDimenType(TYPE_CALORIES, 1, 1), FourDimenType(TYPE_HR, 1, 1),
+        FourDimenType(TYPE_HEIGHT_VALUE, 4, 6),
+        FourDimenType(TYPE_INTEGER_KM, 2, 6, high_start_bit=15, high_bit_count=1),
+        FourDimenType(TYPE_INTEGER_KM, 1, 1, high_start_bit=7, high_bit_count=1, max_support_version=5),
+        FourDimenType(TYPE_DISTANCE, 1, 1, max_support_version=5), FourDimenType(TYPE_SPEED, 2, 3), FourDimenType(TYPE_CYCLE_CADENCE, 1, 3),
+    ],
+    pause_init_types=[OneDimenType(0, 4, 1)],
+)
 _ROCK_CLIMBING_CONFIG = SportRecordConfig(four_dimen_types=[FourDimenType(TYPE_HR, 1, 1), FourDimenType(TYPE_CALORIES, 1, 1), FourDimenType(TYPE_HEIGHT_CHANGE_SIGN, 1, 1, high_start_bit=7, high_bit_count=1), FourDimenType(TYPE_HEIGHT_VALUE, 4, 2)], pause_init_types=[OneDimenType(0, 4, 1)])
 _DIVING_IT_DEP = (64, frozenset({1}))
 _DIVING_CONFIG = SportRecordConfig(it_summary_types=[OneDimenType(64, 1, 1), OneDimenType(65, 4, 1, depends_on=_DIVING_IT_DEP), OneDimenType(66, 4, 1, depends_on=_DIVING_IT_DEP), OneDimenType(67, 2, 1, depends_on=_DIVING_IT_DEP), OneDimenType(68, 2, 1, depends_on=_DIVING_IT_DEP), OneDimenType(69, 2, 1, depends_on=_DIVING_IT_DEP), OneDimenType(75, 2, 2, depends_on=_DIVING_IT_DEP), OneDimenType(76, 2, 2, depends_on=_DIVING_IT_DEP), OneDimenType(77, 2, 2, depends_on=_DIVING_IT_DEP)], four_dimen_types=[FourDimenType(70, 1, 1), FourDimenType(71, 2, 1), FourDimenType(72, 2, 1), FourDimenType(73, 2, 1, high_start_bit=14, high_bit_count=2)])
