@@ -6,6 +6,7 @@ final class UploadProbe: NSObject, WKNavigationDelegate {
     var passed = false
     let source: String
     var view: WKWebView!
+    var hiddenWindow: NSWindow!
 
     init(source: String) { self.source = source }
 
@@ -14,6 +15,8 @@ final class UploadProbe: NSObject, WKNavigationDelegate {
         config.websiteDataStore = .nonPersistent()
         view = WKWebView(frame: NSRect(x: 0, y: 0, width: 1000, height: 700), configuration: config)
         view.navigationDelegate = self
+        hiddenWindow = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1000, height: 700), styleMask: [.titled], backing: .buffered, defer: false)
+        hiddenWindow.contentView = view
         view.loadHTMLString(#"""
         <!doctype html><html><body>
         <a href="/activities/999">Unrelated activity must not count as success</a>
@@ -23,9 +26,14 @@ final class UploadProbe: NSObject, WKNavigationDelegate {
         <footer id="uploadFooter"><button class="save-and-view">Save</button><p class="saving-error" style="display:none">Save failed</p></footer>
         <script>
         window.Strava = {Uploads:{FileUploadView:function(){}}};
+        window.Strava.Uploads.Activity = function(attributes) {this.get = key => attributes[key]};
+        window.Strava.Uploads.UploadActivityView = function(el,model) {this.el=el;this.model=model};
+        window.originalRender = function() {window.renderCount++;return this};
+        window.Strava.Uploads.UploadActivityView.prototype.render = window.originalRender;
         window.jQuery = element => ({data: key => element.dataset[key]});
         window.changeCount = 0;
         window.saveCount = 0;
+        window.renderCount = 0;
         document.querySelector('input[type=file]').addEventListener('change',()=>window.changeCount++);
         document.querySelector('.save-and-view').addEventListener('click',()=>window.saveCount++);
         </script></body></html>
@@ -33,12 +41,13 @@ final class UploadProbe: NSObject, WKNavigationDelegate {
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        if hiddenWindow.isVisible { print("Upload fixture browser should stay hidden"); finished = true; return }
         let tests = #"""
         const require = (condition,message) => {if(!condition) throw new Error(message)};
         const list = document.querySelector('.uploads');
         const button = document.querySelector('.save-and-view');
         const payload = {name:'run_20261012_120000_0123456789abcdef.fit',data:'AQID'};
-        const reset = () => {list.innerHTML='';delete window.xiaomiRunUpload;eval(source);button.className='save-and-view';};
+        const reset = () => {list.innerHTML='';window.Strava.Uploads.UploadActivityView.prototype.render=window.originalRender;delete window.xiaomiRunUpload;eval(source);button.className='save-and-view';};
         const row = (classes,body) => {list.innerHTML='<li class="'+classes+'">'+body+'</li>'};
         reset();
         require(window.xiaomiRunUpload.inspect().status==='ready_for_file','upload page not recognized');
@@ -65,11 +74,30 @@ final class UploadProbe: NSObject, WKNavigationDelegate {
         row('finished','<div class="activity-link"><a href="/activities/12345">Activity</a></div><div class="sport-type"><span class="selection" data-current="Ride"></span></div>');
         require(window.xiaomiRunUpload.inspect().reason==='not-running','cycling accepted');
         row('finished','<div class="sport-type"><span class="selection" data-current="Run"></span></div>');
-        require(window.xiaomiRunUpload.inspect().reason==='missing-activity-id','unrelated page link accepted');
+        require(window.xiaomiRunUpload.inspect().reason==='waiting-activity-id','unrelated page link accepted');
+        const model = new window.Strava.Uploads.Activity({id:24680,type:'Run'});
+        const view = new window.Strava.Uploads.UploadActivityView(list.firstElementChild,model);
+        require(view.render()===view && window.renderCount===1,'official renderer behavior changed');
+        const currentTemplate = window.xiaomiRunUpload.inspect();
+        require(currentTemplate.status==='ready_to_save' && currentTemplate.activity_id===24680,'current Strava template without activity link rejected');
+        list.firstElementChild.insertAdjacentHTML('beforeend','<div class="activity-link"><a href="/activities/13579">Different activity</a></div>');
+        require(window.xiaomiRunUpload.inspect().reason==='conflicting-activity-id','conflicting ID accepted');
+        reset();window.xiaomiRunUpload.selectFile(payload);
+        row('finished','<div class="sport-type"><span class="selection" data-current="Run"></span></div>');
+        const foreignView = new window.Strava.Uploads.UploadActivityView(document.createElement('li'),model);
+        foreignView.render();
+        require(window.xiaomiRunUpload.inspect().reason==='waiting-activity-id','another row model accepted');
+        const invalidView = new window.Strava.Uploads.UploadActivityView(list.firstElementChild,new window.Strava.Uploads.Activity({id:'invalid'}));
+        invalidView.render();
+        require(window.xiaomiRunUpload.inspect().status==='processing','invalid model ID accepted');
+        row('error','<p class="error-message">Invalid file run_20261012_120000_0123456789abcdef.fit contact user@example.test https://example.test/path</p>');
+        const rejected = window.xiaomiRunUpload.inspect();
+        require(rejected.reason==='file-rejected' && rejected.detail.includes('Invalid file'),'official rejection missing');
+        require(!rejected.detail.includes('user@') && !rejected.detail.includes('https:') && !rejected.detail.includes('run_'),'sensitive error context was copied');
         reset();row('finished','<div class="activity-link"><a href="/activities/12345">Old activity</a></div>');
         require(window.xiaomiRunUpload.inspect().reason==='previous-upload-unfinished','another upload overwritten');
         require(window.saveCount===1,'unexpected save');
-        return {passed:true,checks:'exact FIT bytes, one selection, one save, duplicate ID, cycling rejection, unrelated links, unfinished uploads'};
+        return {passed:true,checks:'exact FIT bytes, one selection, one save, duplicate ID, cycling rejection, current Strava model ID, conflicting and unrelated IDs, redacted errors, unfinished uploads'};
         """#
         webView.callAsyncJavaScript(tests, arguments: ["source": source], in: nil, in: .page) { result in
             switch result {

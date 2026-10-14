@@ -51,6 +51,7 @@ final class StravaSession: NSObject, WKHTTPCookieStoreObserver {
     }
     let dataStore: WKWebsiteDataStore
     private let keychainService: String
+    private let migrateLegacyCookies: Bool
     private var restoring = false
     private var ready = false
     private var waiting: [() -> Void] = []
@@ -69,6 +70,7 @@ final class StravaSession: NSObject, WKHTTPCookieStoreObserver {
     init(profileID: UUID = StravaSession.profileID, keychainService: String = StravaSession.snapshotService) {
         self.dataStore = WKWebsiteDataStore(forIdentifier: profileID)
         self.keychainService = keychainService
+        self.migrateLegacyCookies = profileID == StravaSession.profileID
         super.init()
         dataStore.httpCookieStore.add(self)
     }
@@ -92,7 +94,7 @@ final class StravaSession: NSObject, WKHTTPCookieStoreObserver {
 
     private func restoreCookies(_ saved: [StravaCookie]) {
         // Migrate existing default-profile cookies when upgrading, without exporting Google cookies.
-        WKWebsiteDataStore.default().httpCookieStore.getAllCookies { [weak self] legacy in
+        let mergeCookies: ([HTTPCookie]) -> Void = { [weak self] legacy in
             guard let self = self else { return }
             self.dataStore.httpCookieStore.getAllCookies { current in
                 var cookies: [String: HTTPCookie] = [:]
@@ -114,10 +116,30 @@ final class StravaSession: NSObject, WKHTTPCookieStoreObserver {
                 }
             }
         }
+        if migrateLegacyCookies { WKWebsiteDataStore.default().httpCookieStore.getAllCookies(mergeCookies) }
+        else { mergeCookies([]) }
     }
 
     func cookiesDidChange(in cookieStore: WKHTTPCookieStore) {
         if !restoring && ready { save() }
+    }
+
+    // Local installer handoff: transfer only this app's encrypted Strava snapshot
+    // through stdin, then protect it under the updated application's Keychain item.
+    func importSnapshot(_ data: Data, completion: @escaping (Bool) -> Void) {
+        guard ready, data.count <= 1024 * 1024,
+              let records = try? JSONDecoder().decode([StravaCookie].self, from: data),
+              !records.isEmpty, records.count <= 128,
+              records.allSatisfy({ StravaCookie.belongsToStrava($0.domain) }) else { completion(false); return }
+        let cookies = records.compactMap { $0.restored() }
+        guard !cookies.isEmpty else { completion(false); return }
+        snapshotSaved = false
+        let group = DispatchGroup()
+        for cookie in cookies {
+            group.enter()
+            dataStore.httpCookieStore.setCookie(cookie) { group.leave() }
+        }
+        group.notify(queue: .main) { self.save { completion(self.snapshotSaved) } }
     }
 
     func save(completion: (() -> Void)? = nil) {
@@ -139,7 +161,8 @@ final class StravaSession: NSObject, WKHTTPCookieStoreObserver {
                     status = SecItemAdd(item as CFDictionary, nil)
                 }
                 if status == errSecSuccess { self.lastSnapshot = encoded; self.snapshotSaved = true }
-            }
+                else { self.snapshotSaved = false }
+            } else { self.snapshotSaved = true }
             completion?()
         }
     }

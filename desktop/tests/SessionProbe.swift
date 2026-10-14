@@ -24,8 +24,16 @@ require(!StravaCookie.belongsToStrava("strava.com.untrusted.example"), "domain v
 
 session.restore {
     if phase == "write" {
-        session.dataStore.httpCookieStore.setCookie(sample) {
-            session.save {
+        session.importSnapshot(Data("[]".utf8)) { accepted in
+            require(!accepted, "empty snapshot was accepted")
+            let encoded = try! JSONEncoder().encode([stored])
+            var foreign = try! JSONSerialization.jsonObject(with: encoded) as! [[String: Any]]
+            foreign[0]["domain"] = ".google.com"
+            session.importSnapshot(try! JSONSerialization.data(withJSONObject: foreign)) { accepted in
+                require(!accepted, "foreign provider snapshot was imported")
+            }
+            session.importSnapshot(encoded) { accepted in
+                require(accepted, "protected snapshot migration failed")
                 let query: [String: Any] = [
                     kSecClass as String: kSecClassGenericPassword,
                     kSecAttrService as String: service,

@@ -2,7 +2,7 @@
 
 本仓库基于 [kevinkwee/Mi-Fitness-Sync](https://github.com/kevinkwee/Mi-Fitness-Sync)，增加 **小米跑步同步** 原生 Mac 应用，面向中国区小米运动健康与国行 Watch S4。支持筛选活动、只同步跑步、Strava 网页自动上传和重复检测，沿用原项目 MIT 许可证。
 
-**桌面版 1.0.3**：[下载发行版](https://github.com/bestzbf/Mi-Fitness-Sync/releases/tag/v1.0.3)。选择 `XiaomiRunSync-v1.0.3-macos-arm64.zip`，解压后将 **小米跑步同步.app** 放入用户的 `~/Applications` 文件夹。需要 Apple Silicon Mac 和 macOS 14 或以上，不需要安装 Python。此构建采用本地签名，未经过 Apple 公证；首次打开时 macOS 可能要求确认来源。
+**桌面版 1.0.4**：[下载发行版](https://github.com/bestzbf/Mi-Fitness-Sync/releases/tag/v1.0.4)。选择 `XiaomiRunSync-v1.0.4-macos-arm64.zip`，解压后将 **小米跑步同步.app** 放入用户的 `~/Applications` 文件夹。需要 Apple Silicon Mac 和 macOS 14 或以上，不需要安装 Python。此构建采用本地签名，未经过 Apple 公证；首次打开时 macOS 可能要求确认来源。
 
 下面保留原版 CLI 的说明；桌面应用的操作和构建方法见“国行 Watch S4：只同步跑步”。
 
@@ -61,7 +61,7 @@ python main.py --help
 1. 选择今天、近三天、近一周或近一月，点击 **刷新活动**。
 2. **隐藏骑行** 默认开启，也可取消以查看骑行；骑行始终不可选、不可同步。**仅显示跑步** 可以隐藏其他运动。
 3. 勾选需要同步的新跑步，点击 **开始同步到 Strava**；每批最多 15 条，只处理本次勾选的跑步。
-4. 首次在软件内置的 Strava 官方页面完成登录。已有登录时，软件会自动选择文件、等待解析并点击保存，无需手动操作网页。
+4. 首次在软件内置的 Strava 官方页面完成登录。已有登录时，软件会在后台自动选择文件、等待解析并保存，全程不显示网页。需要登录或账号验证时才打开官方页面，完成后自动继续并关闭页面。
 5. 每条成功后自动记录对应的 Strava 活动 ID，并把文件保留到 **已上传**。Strava 判定重复的活动自动跳过；部分失败时停止，重试会跳过已确认的部分。
 
 服务器要求验证账号时，仍需在官方页面完成验证。需要自行修复旧活动时，可点击 **打开 Strava** 手动处理；手动上传后在右上角设置菜单选择 **手动上传后标记选中项已完成…**。
@@ -76,6 +76,8 @@ python main.py --help
 
 1.0.3 增加免费网页自动同步。每次向官网上传一个所选 FIT，确认页面识别为跑步后点击官方保存按钮；只有保存后的活动页面与本次活动 ID 相符，或官方返回重复活动 ID 时，才记录完成。每条结果先原子写入批次确认文件，再交给本机服务校验并归档，重启时可恢复未提交的确认结果。网页结构变化、保存失败或本机记录失败时停止本批次，保留已完成记录和待处理文件。钥匙串操作不弹出阻塞程序的验证窗口，固定 WebKit 配置继续保留官网会话。
 
+1.0.4 修复当前 Strava 上传模板不提供活动链接时的保存判断：从对应上传行的官网活动模型读取编号，仍需核对跑步类型和保存后的活动页面；不同来源返回的编号不一致时停止。正常同步隐藏网页，在主界面显示进度并可停止；Google 登录返回控制面板后自动继续所选批次。官网错误在主界面显示具体原因，未确认的文件继续保留。
+
 查重包含源活动 ID、本地确认上传记录以及跑步开始时间 ±6 秒的匹配；同时间骑行不参与匹配。已导出但尚未确认上传的文件可以再次打开上传流程，不会重复生成 FIT。若 Strava 上还有经其他工具上传的跑步，可通过 **导入 Strava 查重记录** 选择账号数据导出的 `activities.csv`，对比其中的 Run、TrailRun、VirtualRun 等跑步类型。带时区的时间会自动换算；无时区 CSV 可选 UTC 或北京时间。无法解析的跑步时间会停止导入，保留已有索引。
 
 免费模式通过官方上传页自动操作，不实时调用 Strava API，也不扫描账号全部远端活动；官网的重复检测在上传处理时运行。可选的 CSV 索引可在上传前跳过已有跑步，但只覆盖导入时的记录。导出完成不会标记为上传成功；每条需收到官网可核实的结果后自动标记。Strava 账号数据下载方法见[官方说明](https://support.strava.com/en-us/articles/15401919-how-do-i-export-my-strava-data)。
@@ -85,6 +87,13 @@ python main.py --help
 ```bash
 .venv/bin/python -m pip install 'pyinstaller>=6.16,<7'
 .venv/bin/python scripts/build_mac_app.py --install
+```
+
+上传流程的本机测试使用隔离页面和模拟请求，不会向 Strava 上传测试运动：
+
+```bash
+.venv/bin/python -m pytest -q
+.venv/bin/python scripts/test_mac_upload.py
 ```
 
 如果没有已安装的应用，下面的终端向导仍可使用。

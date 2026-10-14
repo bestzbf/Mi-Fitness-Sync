@@ -14,6 +14,38 @@
     } catch (_) { return null; }
   };
   const state = { selected: false, saveClicked: false, activityID: null };
+  const models = new WeakMap();
+  let observingModels = false;
+  const positiveID = value => {
+    if (typeof value !== "number" && !(typeof value === "string" && /^\d+$/.test(value))) return null;
+    const id = Number(value);
+    return Number.isSafeInteger(id) && id > 0 ? id : null;
+  };
+  function observeModels() {
+    if (observingModels) return;
+    const uploads = window.Strava && window.Strava.Uploads;
+    const prototype = uploads && uploads.UploadActivityView && uploads.UploadActivityView.prototype;
+    if (!prototype || typeof prototype.render !== "function" || typeof uploads.Activity !== "function") return;
+    const render = prototype.render;
+    // Observe the model belonging to this exact upload row. Current Strava templates
+    // can omit .activity-link; the official save handler uses this model's ID.
+    prototype.render = function (...args) {
+      const result = render.apply(this, args);
+      try {
+        const list = document.querySelector("#uploadProgress .uploads");
+        if (state.selected && list && list.contains(this.el) && this.model instanceof uploads.Activity) {
+          models.set(this.el, { id: positiveID(this.model.get("id")) });
+        }
+      } catch (_) { /* Observation must not change the official page's behavior. */ }
+      return result;
+    };
+    observingModels = true;
+  }
+  const errorDetail = element => (element ? element.textContent : "")
+    .replace(/https?:\/\/\S+/gi, "")
+    .replace(/[\w.+-]+@[\w.-]+\.[a-z]{2,}/gi, "[邮箱]")
+    .replace(/\S+\.(?:fit|gpx|tcx)\b/gi, "[活动文件]")
+    .replace(/\s+/g, " ").trim().slice(0, 240);
   const rows = () => Array.from(document.querySelectorAll("#uploadProgress .uploads > li"));
   const input = () => document.querySelector('#uploadFile input[type="file"][name="files[]"]');
   const saveButton = () => Array.from(document.querySelectorAll("#uploadFooter .save-and-view"))
@@ -21,10 +53,13 @@
   function inspect() {
     if (!trusted()) return { status: "untrusted" };
     if (/^\/login(?:\/|$)|^\/session(?:\/|$)/.test(location.pathname)) return { status: "login" };
+    if (document.querySelector('#challenge-form, iframe[src*="challenges.cloudflare.com"]')) return { status: "login" };
     if (!location.pathname.startsWith("/upload")) return { status: "other_page" };
+    observeModels();
     for (const selector of [".email-must-be-verified", ".rate-limited", ".server-error", ".unsupported-file-type", ".saving-error"]) {
-      if (Array.from(document.querySelectorAll("#uploadFile " + selector + ", #uploadFooter " + selector)).some(visible)) {
-        return { status: "error", reason: selector.slice(1) };
+      const error = Array.from(document.querySelectorAll("#uploadFile " + selector + ", #uploadFooter " + selector)).find(visible);
+      if (error) {
+        return { status: "error", reason: selector.slice(1), detail: errorDetail(error) };
       }
     }
     const list = rows();
@@ -44,12 +79,15 @@
           if (match && Number.isSafeInteger(Number(match[1]))) id = Number(match[1]);
         }
         if (id > 0) return { status: "duplicate", activity_id: id };
-        return { status: "error", reason: "file-rejected" };
+        return { status: "error", reason: "file-rejected", detail: errorDetail(message) };
       }
       if (!row.classList.contains("finished")) return { status: "processing" };
       const link = row.querySelector(".activity-link a[href]");
-      const id = link && activityID(link.href);
-      if (!id) return { status: "error", reason: "missing-activity-id" };
+      const linkID = link && activityID(link.href);
+      const modelID = models.get(row)?.id;
+      if (linkID && modelID && linkID !== modelID) return { status: "error", reason: "conflicting-activity-id" };
+      const id = modelID || linkID;
+      if (!id) return { status: "processing", reason: "waiting-activity-id" };
       const selection = row.querySelector(".sport-type .selection");
       const sport = selection && window.jQuery && window.jQuery(selection).data("current");
       if (!["Run", "TrailRun", "VirtualRun"].includes(sport)) return { status: "error", reason: "not-running" };
